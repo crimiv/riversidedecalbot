@@ -33,11 +33,11 @@ def process_image(image_bytes):
         rgb = ImageOps.invert(im.convert("RGB"))
         return Image.merge("RGBA", (*rgb.split(), im.split()[3]))
 
-    def clear_white(im, thresh=240):
+    def clear_white(im, tol=15):
         data = im.getdata()
         new = []
         for r, g, b, a in data:
-            if r >= thresh and g >= thresh and b >= thresh and a > 0:
+            if a > 0 and r >= 255 - tol and g >= 255 - tol and b >= 255 - tol:
                 new.append((0, 0, 0, 0))
             else:
                 new.append((r, g, b, a))
@@ -67,7 +67,8 @@ def process_image(image_bytes):
         position = (0, base_image.height - bait.height)
         layer.paste(bait, position, bait)
 
-        return Image.alpha_composite(base_image, layer)
+        # Place the bait underneath the decal layer, matching "add bait to the bottom".
+        return Image.alpha_composite(layer, base_image)
 
     img = invert_image(img)
     img = clear_white(img)
