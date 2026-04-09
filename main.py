@@ -61,7 +61,7 @@ def process_image(image_bytes):
     def apply_opacity(im, val):
         factor = val / 255.0
         data = im.getdata()
-        new = [(r, g, b, int(a * factor)) for (r, g, b, a in data)]
+        new = [(r, g, b, int(a * factor)) for (r, g, b, a) in data]
         im.putdata(new)
         return im
 
