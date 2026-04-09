@@ -1,6 +1,6 @@
 import discord
 from discord import app_commands
-from PIL import Image, ImageOps, ImageFilter
+from PIL import Image, ImageOps
 import io
 import os
 from flask import Flask
@@ -27,61 +27,56 @@ tree = app_commands.CommandTree(client)
 
 def process_image(image_bytes):
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
+    img = img.resize((500, 500))
 
-    img = img.resize((300, 300))
+    def invert_image(im):
+        rgb = ImageOps.invert(im.convert("RGB"))
+        return Image.merge("RGBA", (*rgb.split(), im.split()[3]))
 
-    bw = ImageOps.grayscale(img).convert("RGBA")
-
-    top = bw.copy()
-    mid = bw.copy()
-    bot = bw.copy()
-
-    def remove_black(im, thresh=70):
+    def clear_white(im, thresh=240):
         data = im.getdata()
         new = []
         for r, g, b, a in data:
-            if r < thresh and g < thresh and b < thresh:
+            if r >= thresh and g >= thresh and b >= thresh and a > 0:
                 new.append((0, 0, 0, 0))
             else:
                 new.append((r, g, b, a))
         im.putdata(new)
         return im
 
-    def remove_white(im, thresh=185):
+    def set_opacity(im, opacity_percent):
+        alpha = int(255 * (opacity_percent / 100.0))
         data = im.getdata()
-        new = []
-        for r, g, b, a in data:
-            if r > thresh and g > thresh and b > thresh:
-                new.append((0, 0, 0, 0))
-            else:
-                new.append((r, g, b, a))
+        new = [(r, g, b, int(a * (alpha / 255.0))) for (r, g, b, a) in data]
         im.putdata(new)
         return im
 
-    def apply_opacity(im, val):
-        factor = val / 255.0
-        data = im.getdata()
-        new = [(r, g, b, int(a * factor)) for (r, g, b, a) in data]
-        im.putdata(new)
-        return im
+    def overlay_bait(base_image):
+        bait_path = os.path.join(os.path.dirname(__file__), "bait.png")
+        if not os.path.exists(bait_path):
+            return base_image
 
-    top = remove_black(top, 70)
-    top = apply_opacity(top, 190)
+        bait = Image.open(bait_path).convert("RGBA")
+        bait_width = base_image.width
+        bait_ratio = bait_width / bait.width
+        bait_size = (bait_width, int(bait.height * bait_ratio))
+        bait = bait.resize(bait_size, resample=Image.LANCZOS)
+        bait = set_opacity(bait, 30)
 
-    mid = ImageOps.invert(mid.convert("RGB")).convert("RGBA")
-    mid = remove_white(mid, 185)
-    mid = apply_opacity(mid, 165)
+        layer = Image.new("RGBA", base_image.size, (0, 0, 0, 0))
+        position = (0, base_image.height - bait.height)
+        layer.paste(bait, position, bait)
 
-    bot = bot.filter(ImageFilter.GaussianBlur(radius=9))
-    bot = remove_black(bot, 65)
-    bot = apply_opacity(bot, 190)
+        return Image.alpha_composite(base_image, layer)
 
-    merged = Image.alpha_composite(bot, mid)
-    merged = Image.alpha_composite(merged, top)
-    merged = apply_opacity(merged, 130)
+    img = invert_image(img)
+    img = clear_white(img)
+    img = invert_image(img)
+    img = set_opacity(img, 40)
+    img = overlay_bait(img)
 
     output = io.BytesIO()
-    merged.save(output, format="PNG")
+    img.save(output, format="PNG")
     output.seek(0)
     return output
 
