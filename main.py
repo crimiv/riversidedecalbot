@@ -82,6 +82,46 @@ def process_image(image_bytes, bait_bytes=None):
     output.seek(0)
     return output
 
+def create_bait_image(image_bytes):
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
+    img = img.resize((500, 500))
+
+    # 1. Black and White (grayscale)
+    img = ImageOps.grayscale(img).convert("RGBA")
+
+    # 2. Pencil Sketch simulation
+    # Convert to grayscale for edge detection
+    gray = ImageOps.grayscale(img)
+    
+    # Apply edge detection filter to simulate pencil sketch
+    from PIL import ImageFilter
+    edges = gray.filter(ImageFilter.FIND_EDGES)
+    
+    # Enhance contrast to make edges more pronounced (simulating pencil tip size and range)
+    edges = ImageOps.autocontrast(edges, cutoff=0)
+    
+    # Convert back to RGBA
+    img = edges.convert("RGBA")
+
+    # 3. Color Clearer (White) - remove white/light pixels
+    def clear_white(im, tol=15):
+        data = im.getdata()
+        new = []
+        for r, g, b, a in data:
+            if a > 0 and r >= 255 - tol and g >= 255 - tol and b >= 255 - tol:
+                new.append((0, 0, 0, 0))
+            else:
+                new.append((r, g, b, a))
+        im.putdata(new)
+        return im
+
+    img = clear_white(img)
+
+    output = io.BytesIO()
+    img.save(output, format="PNG")
+    output.seek(0)
+    return output
+
 @tree.command(name="decalbypass")
 async def decalbypass(
     interaction: discord.Interaction,
@@ -103,6 +143,26 @@ async def decalbypass(
     result = process_image(image_bytes, bait_bytes=bait_bytes)
 
     file = discord.File(fp=result, filename="decalbypass.png")
+    try:
+        await interaction.user.send(file=file)
+    except discord.Forbidden:
+        await interaction.followup.send("I couldn't send the image to your DMs. Please make sure your DMs are open for this server.")
+
+@tree.command(name="createbait")
+async def createbait(
+    interaction: discord.Interaction,
+    image: discord.Attachment,
+):
+    await interaction.response.defer()
+
+    if not (image.content_type and image.content_type.startswith("image")):
+        await interaction.followup.send("Please upload a valid image file.")
+        return
+
+    image_bytes = await image.read()
+    result = create_bait_image(image_bytes)
+
+    file = discord.File(fp=result, filename="bait.png")
     try:
         await interaction.user.send(file=file)
     except discord.Forbidden:
