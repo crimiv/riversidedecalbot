@@ -3,23 +3,8 @@ from discord import app_commands
 from PIL import Image, ImageOps, ImageFilter
 import io
 import os
-from flask import Flask
-from threading import Thread
 
 TOKEN = os.getenv("TOKEN")
-
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "Bot is alive"
-
-def run_web():
-    app.run(host='0.0.0.0', port=8080)
-
-def keep_alive():
-    t = Thread(target=run_web)
-    t.start()
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
@@ -61,7 +46,7 @@ def process_image(image_bytes):
     def apply_opacity(im, val):
         factor = val / 255.0
         data = im.getdata()
-        new = [(r, g, b, int(a * factor)) for (r, g, b, a in data)]
+        new = [(r, g, b, int(a * factor)) for r, g, b, a in data]
         im.putdata(new)
         return im
 
@@ -103,5 +88,4 @@ async def decal(interaction: discord.Interaction, image: discord.Attachment):
 async def on_ready():
     await tree.sync()
 
-keep_alive()
 client.run(TOKEN)
