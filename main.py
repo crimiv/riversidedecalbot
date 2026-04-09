@@ -25,7 +25,7 @@ intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
-def process_image(image_bytes):
+def process_image(image_bytes, bait_bytes=None):
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
     img = img.resize((500, 500))
 
@@ -51,48 +51,59 @@ def process_image(image_bytes):
         im.putdata(new)
         return im
 
-    def overlay_bait(base_image):
-        bait_path = os.path.join(os.path.dirname(__file__), "bait.png")
-        if not os.path.exists(bait_path):
-            return base_image
+    def overlay_bait(base_image, bait_bytes=None):
+        if bait_bytes is not None:
+            bait = Image.open(io.BytesIO(bait_bytes)).convert("RGBA")
+        else:
+            bait_path = os.path.join(os.path.dirname(__file__), "bait.png")
+            if not os.path.exists(bait_path):
+                return base_image
+            bait = Image.open(bait_path).convert("RGBA")
 
-        bait = Image.open(bait_path).convert("RGBA")
         bait_width = base_image.width
         bait_ratio = bait_width / bait.width
         bait_size = (bait_width, int(bait.height * bait_ratio))
         bait = bait.resize(bait_size, resample=Image.LANCZOS)
-        bait = set_opacity(bait, 30)
+        bait = set_opacity(bait, 50)
 
         layer = Image.new("RGBA", base_image.size, (0, 0, 0, 0))
         position = (0, base_image.height - bait.height)
         layer.paste(bait, position, bait)
 
-        # Place the bait underneath the decal layer, matching "add bait to the bottom".
         return Image.alpha_composite(layer, base_image)
 
     img = invert_image(img)
     img = clear_white(img)
     img = invert_image(img)
-    img = set_opacity(img, 40)
-    img = overlay_bait(img)
+    img = set_opacity(img, 60)
+    img = overlay_bait(img, bait_bytes)
 
     output = io.BytesIO()
     img.save(output, format="PNG")
     output.seek(0)
     return output
 
-@tree.command(name="decal")
-async def decal(interaction: discord.Interaction, image: discord.Attachment):
+@tree.command(name="decalbypass")
+async def decalbypass(
+    interaction: discord.Interaction,
+    image: discord.Attachment,
+    bait: discord.Attachment,
+):
     await interaction.response.defer()
 
-    if not image.content_type.startswith("image"):
-        await interaction.followup.send("Please upload a valid image file.")
+    if not (image.content_type and image.content_type.startswith("image")):
+        await interaction.followup.send("Please upload a valid image file for the decal.")
+        return
+
+    if not (bait.content_type and bait.content_type.startswith("image")):
+        await interaction.followup.send("Please upload a valid image file for the bait.")
         return
 
     image_bytes = await image.read()
-    result = process_image(image_bytes)
+    bait_bytes = await bait.read()
+    result = process_image(image_bytes, bait_bytes=bait_bytes)
 
-    file = discord.File(fp=result, filename="processed.png")
+    file = discord.File(fp=result, filename="decalbypass.png")
     await interaction.followup.send(file=file)
 
 @client.event
