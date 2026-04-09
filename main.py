@@ -86,27 +86,46 @@ def create_bait_image(image_bytes):
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
     img = img.resize((500, 500), resample=Image.LANCZOS)
 
-    # 1. Black and White (grayscale)
+    # 1. Black and White
     gray = ImageOps.grayscale(img)
 
     # 2. Pencil Sketch simulation
-    edges = gray.filter(ImageFilter.FIND_EDGES)
-    edges = ImageOps.autocontrast(edges, cutoff=0)
-    edges = edges.point(lambda p: 255 if p > 180 else 0)
+    inverted = ImageOps.invert(gray)
+    blurred = inverted.filter(ImageFilter.GaussianBlur(radius=20))
 
-    # 3. Color Clearer (White) - remove white/light pixels and make background transparent
-    sketch = edges.convert("RGBA")
-    data = sketch.getdata()
+    def color_dodge(front, back):
+        front_data = front.load()
+        back_data = back.load()
+        result = Image.new("L", front.size)
+        result_data = result.load()
+        width, height = front.size
+        for x in range(width):
+            for y in range(height):
+                f = front_data[x, y]
+                b = back_data[x, y]
+                if f == 255:
+                    result_data[x, y] = 255
+                else:
+                    value = min(255, int((b << 8) / (255 - f)))
+                    result_data[x, y] = value
+        return result
+
+    sketch = color_dodge(blurred, gray)
+    sketch = ImageOps.autocontrast(sketch)
+
+    # 3. Color Clearer (White)
+    sketch_rgba = sketch.convert("RGBA")
+    data = sketch_rgba.getdata()
     new_data = []
     for r, g, b, a in data:
-        if r >= 250 and g >= 250 and b >= 250:
+        if r >= 240 and g >= 240 and b >= 240:
             new_data.append((255, 255, 255, 0))
         else:
             new_data.append((r, g, b, 255))
-    sketch.putdata(new_data)
+    sketch_rgba.putdata(new_data)
 
     output = io.BytesIO()
-    sketch.save(output, format="PNG")
+    sketch_rgba.save(output, format="PNG")
     output.seek(0)
     return output
 
