@@ -28,6 +28,7 @@ tree = app_commands.CommandTree(client)
 def process_image(image_bytes, bait_bytes=None):
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
     img = img.resize((500, 500))
+    img = ImageOps.grayscale(img).convert("RGBA")
 
     def invert_image(im):
         rgb = ImageOps.invert(im.convert("RGB"))
