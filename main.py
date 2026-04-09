@@ -61,17 +61,14 @@ def process_image(image_bytes, bait_bytes=None):
                 return base_image
             bait = Image.open(bait_path).convert("RGBA")
 
-        bait_width = base_image.width
-        bait_ratio = bait_width / bait.width
-        bait_size = (bait_width, int(bait.height * bait_ratio))
-        bait = bait.resize(bait_size, resample=Image.LANCZOS)
+        bait = bait.resize(base_image.size, resample=Image.LANCZOS)
         bait = set_opacity(bait, 50)
 
-        layer = Image.new("RGBA", base_image.size, (0, 0, 0, 0))
-        position = (0, base_image.height - bait.height)
-        layer.paste(bait, position, bait)
+        bait_layer = Image.new("RGBA", base_image.size, (0, 0, 0, 0))
+        bait_layer.paste(bait, (0, 0), bait)
 
-        return Image.alpha_composite(layer, base_image)
+        # Compose the bait on the bottom and the decal image on top.
+        return Image.alpha_composite(bait_layer, base_image)
 
     img = invert_image(img)
     img = clear_white(img)
