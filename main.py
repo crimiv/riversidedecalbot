@@ -102,7 +102,11 @@ async def decalbypass(
     result = process_image(image_bytes, bait_bytes=bait_bytes)
 
     file = discord.File(fp=result, filename="decalbypass.png")
-    await interaction.followup.send(file=file)
+    try:
+        await interaction.user.send(file=file)
+        await interaction.followup.send("Your decal bypass image has been sent to your DMs!")
+    except discord.Forbidden:
+        await interaction.followup.send("I couldn't send the image to your DMs. Please make sure your DMs are open for this server.")
 
 @client.event
 async def on_ready():
