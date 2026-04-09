@@ -3,6 +3,7 @@ from discord import app_commands
 from PIL import Image, ImageOps
 import io
 import os
+import asyncio
 from flask import Flask
 from threading import Thread
 
@@ -104,7 +105,9 @@ async def decalbypass(
     file = discord.File(fp=result, filename="decalbypass.png")
     try:
         await interaction.user.send(file=file)
-        await interaction.followup.send("Your decal bypass image has been sent to your DMs!")
+        message = await interaction.followup.send("Your decal bypass image has been sent to your DMs!")
+        await asyncio.sleep(5)
+        await message.delete()
     except discord.Forbidden:
         await interaction.followup.send("I couldn't send the image to your DMs. Please make sure your DMs are open for this server.")
 
