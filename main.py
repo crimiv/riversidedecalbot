@@ -1,6 +1,6 @@
 import discord
 from discord import app_commands
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageFilter
 import io
 import os
 import asyncio
@@ -84,41 +84,29 @@ def process_image(image_bytes, bait_bytes=None):
 
 def create_bait_image(image_bytes):
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
-    img = img.resize((500, 500))
+    img = img.resize((500, 500), resample=Image.LANCZOS)
 
     # 1. Black and White (grayscale)
-    img = ImageOps.grayscale(img).convert("RGBA")
+    gray = ImageOps.grayscale(img)
 
     # 2. Pencil Sketch simulation
-    # Convert to grayscale for edge detection
-    gray = ImageOps.grayscale(img)
-    
-    # Apply edge detection filter to simulate pencil sketch
-    from PIL import ImageFilter
     edges = gray.filter(ImageFilter.FIND_EDGES)
-    
-    # Enhance contrast to make edges more pronounced (simulating pencil tip size and range)
     edges = ImageOps.autocontrast(edges, cutoff=0)
-    
-    # Convert back to RGBA
-    img = edges.convert("RGBA")
+    edges = edges.point(lambda p: 255 if p > 180 else 0)
 
-    # 3. Color Clearer (White) - remove white/light pixels
-    def clear_white(im, tol=15):
-        data = im.getdata()
-        new = []
-        for r, g, b, a in data:
-            if a > 0 and r >= 255 - tol and g >= 255 - tol and b >= 255 - tol:
-                new.append((0, 0, 0, 0))
-            else:
-                new.append((r, g, b, a))
-        im.putdata(new)
-        return im
-
-    img = clear_white(img)
+    # 3. Color Clearer (White) - remove white/light pixels and make background transparent
+    sketch = edges.convert("RGBA")
+    data = sketch.getdata()
+    new_data = []
+    for r, g, b, a in data:
+        if r >= 250 and g >= 250 and b >= 250:
+            new_data.append((255, 255, 255, 0))
+        else:
+            new_data.append((r, g, b, 255))
+    sketch.putdata(new_data)
 
     output = io.BytesIO()
-    img.save(output, format="PNG")
+    sketch.save(output, format="PNG")
     output.seek(0)
     return output
 
