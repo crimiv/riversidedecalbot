@@ -113,19 +113,69 @@ def create_bait_image(image_bytes):
     sketch = color_dodge(blurred, gray)
     sketch = ImageOps.autocontrast(sketch)
 
-    # 3. Color Clearer (White)
-    sketch_rgba = sketch.convert("RGBA")
-    data = sketch_rgba.getdata()
-    new_data = []
-    for r, g, b, a in data:
-        if r >= 240 and g >= 240 and b >= 240:
-            new_data.append((255, 255, 255, 0))
-        else:
-            new_data.append((r, g, b, 255))
-    sketch_rgba.putdata(new_data)
+    # 3. Color Clearer (White) based on the decompiled Paint.NET plugin algorithm
+    def csharp_int_div(n, d):
+        return int(n / d) if d != 0 else 0
+
+    def minimum_alpha(Cc, Cb):
+        if Cc == Cb:
+            return 0
+        if Cc > Cb:
+            return csharp_int_div(255 * (Cc - Cb) - 1, 255 - Cb) + 1
+        return csharp_int_div(255 * (Cb - Cc - 1), Cb) + 1
+
+    def adjust_for_alpha(Af, Cc, Cb, Cm):
+        num = 255 * (Cc - Cb) - Af * (Cm - Cb)
+        if num <= -255:
+            Cm += csharp_int_div(num + 255, Af) - 1
+        elif num > 0:
+            Cm += csharp_int_div(num - 1, Af) + 1
+        return max(0, min(255, Cm))
+
+    def color_clearer_white(src_img):
+        amount = True
+        r = g = b = 255
+        transp_white = (255, 255, 255, 0)
+
+        src = src_img.convert("RGBA")
+        dst = Image.new("RGBA", src.size)
+        src_data = src.load()
+        dst_data = dst.load()
+        width, height = src.size
+
+        for y in range(height):
+            for x in range(width):
+                r2, g2, b2, a = src_data[x, y]
+                if a == 0:
+                    dst_data[x, y] = transp_white if amount else (r2, g2, b2, 0)
+                else:
+                    if a == 255:
+                        cc = r2
+                        cc2 = g2
+                        cc3 = b2
+                    else:
+                        cc = csharp_int_div(255 * r + a * (r2 - r), 255)
+                        cc2 = csharp_int_div(255 * g + a * (g2 - g), 255)
+                        cc3 = csharp_int_div(255 * b + a * (b2 - b), 255)
+
+                    num4 = minimum_alpha(cc, r)
+                    num4 = max(num4, minimum_alpha(cc2, g))
+                    num4 = max(num4, minimum_alpha(cc3, b))
+
+                    if num4 == 0:
+                        dst_data[x, y] = transp_white if amount else (r2, g2, b2, 0)
+                    else:
+                        b3 = adjust_for_alpha(num4, cc, r, r2)
+                        b4 = adjust_for_alpha(num4, cc2, g, g2)
+                        b5 = adjust_for_alpha(num4, cc3, b, b2)
+                        dst_data[x, y] = (b5, b4, b3, num4)
+
+        return dst
+
+    bait_image = color_clearer_white(sketch)
 
     output = io.BytesIO()
-    sketch_rgba.save(output, format="PNG")
+    bait_image.save(output, format="PNG")
     output.seek(0)
     return output
 
