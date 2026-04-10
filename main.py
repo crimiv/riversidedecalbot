@@ -179,11 +179,153 @@ def create_bait_image(image_bytes):
     output.seek(0)
     return output
 
+def minimum_alpha(Cc, Cb):
+    if Cc == Cb:
+        return 0
+    if Cc > Cb:
+        return (255 * (Cc - Cb) - 1) // (255 - Cb) + 1
+    return (255 * (Cb - Cc - 1)) // Cb + 1
+
+def adjust_for_alpha(Af, Cc, Cb, Cm):
+    num = 255 * (Cc - Cb) - Af * (Cm - Cb)
+    if num <= -255:
+        Cm += (num + 255) // Af - 1
+    elif num > 0:
+        Cm += (num - 1) // Af + 1
+    return max(0, min(255, Cm))
+
+def color_clearer(src_img, color, make_transp_white=False):
+    r, g, b = color
+    amount = make_transp_white
+    transp_white = (255, 255, 255, 0)
+
+    src = src_img.convert("RGBA")
+    dst = Image.new("RGBA", src.size)
+    src_data = src.load()
+    dst_data = dst.load()
+    width, height = src.size
+
+    for y in range(height):
+        for x in range(width):
+            r2, g2, b2, a = src_data[x, y]
+            if a == 0:
+                dst_data[x, y] = transp_white if amount else (r2, g2, b2, 0)
+            else:
+                if a == 255:
+                    cc = r2
+                    cc2 = g2
+                    cc3 = b2
+                else:
+                    cc = (255 * r + a * (r2 - r)) // 255
+                    cc2 = (255 * g + a * (g2 - g)) // 255
+                    cc3 = (255 * b + a * (b2 - b)) // 255
+
+                num4 = minimum_alpha(cc, r)
+                num4 = max(num4, minimum_alpha(cc2, g))
+                num4 = max(num4, minimum_alpha(cc3, b))
+
+                if num4 == 0:
+                    dst_data[x, y] = transp_white if amount else (r2, g2, b2, 0)
+                else:
+                    b3 = adjust_for_alpha(num4, cc, r, r2)
+                    b4 = adjust_for_alpha(num4, cc2, g, g2)
+                    b5 = adjust_for_alpha(num4, cc3, b, b2)
+                    dst_data[x, y] = (b5, b4, b3, num4)
+
+    return dst
+
+def gaussian_blur_plus(src_img, radius, channels, blending_mode):
+    # Blur the image
+    blurred = src_img.filter(ImageFilter.GaussianBlur(radius=radius))
+
+    # Replace unselected channels with original
+    src_data = src_img.load()
+    blurred_data = blurred.load()
+    dst = Image.new("RGBA", src_img.size)
+    dst_data = dst.load()
+    width, height = src_img.size
+
+    for y in range(height):
+        for x in range(width):
+            orig = src_data[x, y]
+            blur = blurred_data[x, y]
+            r = blur[0] if channels[0] else orig[0]
+            g = blur[1] if channels[1] else orig[1]
+            b = blur[2] if channels[2] else orig[2]
+            a = blur[3] if channels[3] else orig[3]
+            dst_data[x, y] = (r, g, b, a)
+
+    # For normal blending (mode 0), just return dst
+    return dst
+
+def set_alpha(img, alpha):
+    data = img.getdata()
+    new = [(r, g, b, int(a * (alpha / 255.0))) for (r, g, b, a) in data]
+    img.putdata(new)
+    return img
+
+def process_image_paintnet(image_bytes):
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
+
+    # 1. Canvas size 300x300
+    img = img.resize((300, 300), resample=Image.LANCZOS)
+
+    # 2. Black and White
+    img = ImageOps.grayscale(img).convert("RGBA")
+
+    # Create three layers
+    layer_bottom = img.copy()
+    layer_middle = img.copy()
+    layer_top = img.copy()
+
+    # 4. Color Clearer (black) on top layer
+    layer_top = color_clearer(layer_top, color=(0, 0, 0), make_transp_white=False)
+
+    # 5. Invert colors on the middle layer
+    layer_middle = ImageOps.invert(layer_middle.convert("RGB")).convert("RGBA")
+
+    # 6. Color Clearer (white) on middle layer
+    layer_middle = color_clearer(layer_middle, color=(255, 255, 255), make_transp_white=True)
+
+    # 7. Gaussian Blur+ 6 on bottom layer
+    layer_bottom = gaussian_blur_plus(layer_bottom, radius=6, channels=[True, True, True, True], blending_mode=0)
+
+    # 8. Color Clearer (black) on bottom layer
+    layer_bottom = color_clearer(layer_bottom, color=(0, 0, 0), make_transp_white=False)
+
+    # 9. Opacity top layer 190
+    layer_top = set_alpha(layer_top, 190)
+
+    # 10. Opacity middle layer 165
+    layer_middle = set_alpha(layer_middle, 165)
+
+    # 11. Opacity bottom layer 190
+    layer_bottom = set_alpha(layer_bottom, 190)
+
+    # 12. Merge all layers
+    base = layer_bottom
+    base = Image.alpha_composite(base, layer_middle)
+    base = Image.alpha_composite(base, layer_top)
+
+    # 13. Opacity 115
+    base = set_alpha(base, 115)
+
+    output = io.BytesIO()
+    base.save(output, format="PNG")
+    output.seek(0)
+    return output
+
 @tree.command(name="decalbypass")
+@app_commands.describe(method="Choose the decal bypass method")
+@app_commands.choices(method=[
+    app_commands.Choice(name="Classic", value="classic"),
+    app_commands.Choice(name="Paint.NET", value="paintnet")
+])
 async def decalbypass(
     interaction: discord.Interaction,
     image: discord.Attachment,
-    bait: discord.Attachment,
+    method: str,
+    bait: discord.Attachment = None,
 ):
     await interaction.response.defer(ephemeral=True)
 
@@ -191,13 +333,21 @@ async def decalbypass(
         await interaction.followup.send("Please upload a valid image file for the decal.", ephemeral=True)
         return
 
-    if not (bait.content_type and bait.content_type.startswith("image")):
-        await interaction.followup.send("Please upload a valid image file for the bait.", ephemeral=True)
+    if method == "classic":
+        if bait is None or not (bait.content_type and bait.content_type.startswith("image")):
+            await interaction.followup.send("For the Classic method, please upload a valid image file for the bait.", ephemeral=True)
+            return
+        image_bytes = await image.read()
+        bait_bytes = await bait.read()
+        result = process_image(image_bytes, bait_bytes=bait_bytes)
+    elif method == "paintnet":
+        if bait is not None:
+            await interaction.followup.send("The Paint.NET method does not use a bait. Ignoring the bait attachment.", ephemeral=True)
+        image_bytes = await image.read()
+        result = process_image_paintnet(image_bytes)
+    else:
+        await interaction.followup.send("Invalid method selected.", ephemeral=True)
         return
-
-    image_bytes = await image.read()
-    bait_bytes = await bait.read()
-    result = process_image(image_bytes, bait_bytes=bait_bytes)
 
     file = discord.File(fp=result, filename="decalbypass.png")
     try:
