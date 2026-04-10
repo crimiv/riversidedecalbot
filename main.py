@@ -68,7 +68,6 @@ def process_image(image_bytes, bait_bytes=None):
         bait_layer = Image.new("RGBA", base_image.size, (0, 0, 0, 0))
         bait_layer.paste(bait, (0, 0), bait)
 
-        # Compose the bait on the bottom and the decal image on top.
         return Image.alpha_composite(bait_layer, base_image)
 
     img = invert_image(img)
@@ -86,10 +85,8 @@ def create_bait_image(image_bytes):
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
     img = img.resize((500, 500), resample=Image.LANCZOS)
 
-    # 1. Black and White
     gray = ImageOps.grayscale(img)
 
-    # 2. Pencil Sketch simulation
     inverted = ImageOps.invert(gray)
     blurred = inverted.filter(ImageFilter.GaussianBlur(radius=20))
 
@@ -113,7 +110,6 @@ def create_bait_image(image_bytes):
     sketch = color_dodge(blurred, gray)
     sketch = ImageOps.autocontrast(sketch)
 
-    # 3. Color Clearer (White) based on the decompiled Paint.NET plugin algorithm
     def csharp_int_div(n, d):
         return int(n / d) if d != 0 else 0
 
@@ -235,10 +231,8 @@ def color_clearer(src_img, color, make_transp_white=False):
     return dst
 
 def gaussian_blur_plus(src_img, radius, channels, blending_mode):
-    # Blur the image
     blurred = src_img.filter(ImageFilter.GaussianBlur(radius=radius))
 
-    # Replace unselected channels with original
     src_data = src_img.load()
     blurred_data = blurred.load()
     dst = Image.new("RGBA", src_img.size)
@@ -255,7 +249,6 @@ def gaussian_blur_plus(src_img, radius, channels, blending_mode):
             a = blur[3] if channels[3] else orig[3]
             dst_data[x, y] = (r, g, b, a)
 
-    # For normal blending (mode 0), just return dst
     return dst
 
 def set_alpha(img, alpha):
@@ -267,47 +260,34 @@ def set_alpha(img, alpha):
 def process_image_paintnet(image_bytes):
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
 
-    # 1. Canvas size 300x300
     img = img.resize((300, 300), resample=Image.LANCZOS)
 
-    # 2. Black and White
     img = ImageOps.grayscale(img).convert("RGBA")
 
-    # Create three layers
     layer_bottom = img.copy()
     layer_middle = img.copy()
     layer_top = img.copy()
 
-    # 4. Color Clearer (black) on top layer
     layer_top = color_clearer(layer_top, color=(0, 0, 0), make_transp_white=False)
 
-    # 5. Invert colors on the middle layer
     layer_middle = ImageOps.invert(layer_middle.convert("RGB")).convert("RGBA")
 
-    # 6. Color Clearer (white) on middle layer
     layer_middle = color_clearer(layer_middle, color=(255, 255, 255), make_transp_white=True)
 
-    # 7. Gaussian Blur+ 6 on bottom layer
     layer_bottom = gaussian_blur_plus(layer_bottom, radius=6, channels=[True, True, True, True], blending_mode=0)
 
-    # 8. Color Clearer (black) on bottom layer
     layer_bottom = color_clearer(layer_bottom, color=(0, 0, 0), make_transp_white=False)
 
-    # 9. Opacity top layer 190
     layer_top = set_alpha(layer_top, 190)
 
-    # 10. Opacity middle layer 165
     layer_middle = set_alpha(layer_middle, 165)
 
-    # 11. Opacity bottom layer 190
     layer_bottom = set_alpha(layer_bottom, 190)
 
-    # 12. Merge all layers
     base = layer_bottom
     base = Image.alpha_composite(base, layer_middle)
     base = Image.alpha_composite(base, layer_top)
 
-    # 13. Opacity 115
     base = set_alpha(base, 115)
 
     output = io.BytesIO()
@@ -318,7 +298,7 @@ def process_image_paintnet(image_bytes):
 @tree.command(name="decalbypass")
 @app_commands.describe(method="Choose the decal bypass method")
 @app_commands.choices(method=[
-    app_commands.Choice(name="Classic", value="classic"),
+    app_commands.Choice(name="ibis Paint X", value="ibispaintx"),
     app_commands.Choice(name="Paint.NET", value="paintnet")
 ])
 async def decalbypass(
@@ -333,9 +313,9 @@ async def decalbypass(
         await interaction.followup.send("Please upload a valid image file for the decal.", ephemeral=True)
         return
 
-    if method == "classic":
+    if method == "ibispaintx":
         if bait is None or not (bait.content_type and bait.content_type.startswith("image")):
-            await interaction.followup.send("For the Classic method, please upload a valid image file for the bait.", ephemeral=True)
+            await interaction.followup.send("For the ibis Paint X method, please upload a valid image file for the bait.", ephemeral=True)
             return
         image_bytes = await image.read()
         bait_bytes = await bait.read()
