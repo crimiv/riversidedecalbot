@@ -257,7 +257,7 @@ def set_alpha(img, alpha):
     img.putdata(new)
     return img
 
-def process_image_paintdotnet(image_bytes):
+def process_image_method2(image_bytes):
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
 
     img = img.resize((300, 300), resample=Image.LANCZOS)
@@ -298,8 +298,8 @@ def process_image_paintdotnet(image_bytes):
 @tree.command(name="decalbypass")
 @app_commands.describe(method="Choose the decal bypass method")
 @app_commands.choices(method=[
-    app_commands.Choice(name="ibisPaint", value="ibispaint"),
-    app_commands.Choice(name="Paint.NET", value="paintdotnet")
+    app_commands.Choice(name="Method 1", value="method1"),
+    app_commands.Choice(name="Method 2", value="method2")
 ])
 async def decalbypass(
     interaction: discord.Interaction,
@@ -313,18 +313,18 @@ async def decalbypass(
         await interaction.followup.send("Please upload a valid image file for the decal.", ephemeral=True)
         return
 
-    if method == "ibispaint":
+    if method == "method1":
         if bait is None or not (bait.content_type and bait.content_type.startswith("image")):
-            await interaction.followup.send("For the ibis Paint X method, please upload a valid image file for the bait.", ephemeral=True)
+            await interaction.followup.send("For Method 1, please upload a valid image file for the bait.", ephemeral=True)
             return
         image_bytes = await image.read()
         bait_bytes = await bait.read()
         result = process_image(image_bytes, bait_bytes=bait_bytes)
-    elif method == "paintdotnet":
+    elif method == "method2":
         if bait is not None:
-            await interaction.followup.send("The Paint.NET method does not use a bait. Ignoring the bait attachment.", ephemeral=True)
+            await interaction.followup.send("Method 2 does not use a bait. Ignoring the bait attachment.", ephemeral=True)
         image_bytes = await image.read()
-        result = process_image_paintdotnet(image_bytes)
+        result = process_image_method2(image_bytes)
     else:
         await interaction.followup.send("Invalid method selected.", ephemeral=True)
         return
