@@ -63,7 +63,7 @@ def process_image(image_bytes, bait_bytes=None):
             bait = Image.open(bait_path).convert("RGBA")
 
         bait = bait.resize(base_image.size, resample=Image.LANCZOS)
-        bait = set_opacity(bait, 50)
+        bait = set_opacity(bait, 30)
 
         bait_layer = Image.new("RGBA", base_image.size, (0, 0, 0, 0))
         bait_layer.paste(bait, (0, 0), bait)
@@ -73,7 +73,7 @@ def process_image(image_bytes, bait_bytes=None):
     img = invert_image(img)
     img = clear_white(img)
     img = invert_image(img)
-    img = set_opacity(img, 60)
+    img = set_opacity(img, 40)
     img = overlay_bait(img, bait_bytes)
 
     output = io.BytesIO()
