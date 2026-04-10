@@ -26,89 +26,7 @@ intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
-def csharp_int_div(n, d):
-    if d == 0:
-        return 0
-    return int(n / d)
-
-
-def minimum_alpha(Cc, Cb):
-    if Cc == Cb:
-        return 0
-    if Cc > Cb:
-        return csharp_int_div(255 * (Cc - Cb) - 1, 255 - Cb) + 1
-    return csharp_int_div(255 * (Cb - Cc - 1), Cb) + 1
-
-
-def adjust_for_alpha(Af, Cc, Cb, Cm):
-    num = 255 * (Cc - Cb) - Af * (Cm - Cb)
-    if num <= -255:
-        Cm += csharp_int_div(num + 255, Af) - 1
-    elif num > 0:
-        Cm += csharp_int_div(num - 1, Af) + 1
-    return max(0, min(255, Cm))
-
-
-def color_clearer(image, target_color=(255, 255, 255)):
-    r, g, b = target_color
-    transp_white = (255, 255, 255, 0)
-
-    src = image.convert("RGBA")
-    dst = Image.new("RGBA", src.size)
-    src_data = src.load()
-    dst_data = dst.load()
-    width, height = src.size
-
-    for y in range(height):
-        for x in range(width):
-            r2, g2, b2, a = src_data[x, y]
-            if a == 0:
-                dst_data[x, y] = transp_white
-            else:
-                if a == 255:
-                    cc = r2
-                    cc2 = g2
-                    cc3 = b2
-                else:
-                    cc = csharp_int_div(255 * r + a * (r2 - r), 255)
-                    cc2 = csharp_int_div(255 * g + a * (g2 - g), 255)
-                    cc3 = csharp_int_div(255 * b + a * (b2 - b), 255)
-
-                num4 = minimum_alpha(cc, r)
-                num4 = max(num4, minimum_alpha(cc2, g))
-                num4 = max(num4, minimum_alpha(cc3, b))
-
-                if num4 == 0:
-                    dst_data[x, y] = transp_white
-                else:
-                    b3 = adjust_for_alpha(num4, cc, r, r2)
-                    b4 = adjust_for_alpha(num4, cc2, g, g2)
-                    b5 = adjust_for_alpha(num4, cc3, b, b2)
-                    dst_data[x, y] = (b5, b4, b3, num4)
-
-    return dst
-
-
-def set_opacity(image, opacity):
-    alpha_value = int(255 * (opacity / 255.0))
-    img = image.convert("RGBA")
-    data = img.getdata()
-    new = []
-    for r, g, b, a in data:
-        new_alpha = int(a * alpha_value / 255)
-        new.append((r, g, b, new_alpha))
-    img.putdata(new)
-    return img
-
-
-def merge_layers(layers):
-    base = Image.new("RGBA", layers[0].size, (0, 0, 0, 0))
-    for layer in layers:
-        base = Image.alpha_composite(base, layer)
-    return base
-
-
-def process_image_method1(image_bytes, bait_bytes=None):
+def process_image(image_bytes, bait_bytes=None):
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
     img = img.resize((500, 500))
     img = ImageOps.grayscale(img).convert("RGBA")
@@ -128,6 +46,13 @@ def process_image_method1(image_bytes, bait_bytes=None):
         im.putdata(new)
         return im
 
+    def set_opacity(im, opacity_percent):
+        alpha = int(255 * (opacity_percent / 100.0))
+        data = im.getdata()
+        new = [(r, g, b, int(a * (alpha / 255.0))) for (r, g, b, a) in data]
+        im.putdata(new)
+        return im
+
     def overlay_bait(base_image, bait_bytes=None):
         if bait_bytes is not None:
             bait = Image.open(io.BytesIO(bait_bytes)).convert("RGBA")
@@ -138,61 +63,24 @@ def process_image_method1(image_bytes, bait_bytes=None):
             bait = Image.open(bait_path).convert("RGBA")
 
         bait = bait.resize(base_image.size, resample=Image.LANCZOS)
-        bait = set_opacity(bait, 128)
+        bait = set_opacity(bait, 50)
 
         bait_layer = Image.new("RGBA", base_image.size, (0, 0, 0, 0))
         bait_layer.paste(bait, (0, 0), bait)
 
+        # Compose the bait on the bottom and the decal image on top.
         return Image.alpha_composite(bait_layer, base_image)
 
     img = invert_image(img)
     img = clear_white(img)
     img = invert_image(img)
-    img = set_opacity(img, 153)
+    img = set_opacity(img, 60)
     img = overlay_bait(img, bait_bytes)
 
     output = io.BytesIO()
     img.save(output, format="PNG")
     output.seek(0)
     return output
-
-
-def process_image_method2(image_bytes, bait_bytes=None):
-    img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
-    img = img.resize((300, 300), resample=Image.LANCZOS)
-    img = ImageOps.grayscale(img).convert("RGBA")
-
-    top = color_clearer(img, target_color=(0, 0, 0))
-
-    middle = ImageOps.invert(img.convert("RGB")).convert("RGBA")
-    middle = color_clearer(middle, target_color=(255, 255, 255))
-
-    bottom = img.filter(ImageFilter.GaussianBlur(radius=6))
-    bottom = color_clearer(bottom, target_color=(0, 0, 0))
-
-    top = set_opacity(top, 190)
-    middle = set_opacity(middle, 165)
-    bottom = set_opacity(bottom, 190)
-
-    merged = merge_layers([bottom, middle, top])
-    merged = set_opacity(merged, 115)
-
-    if bait_bytes is not None:
-        bait = Image.open(io.BytesIO(bait_bytes)).convert("RGBA")
-        bait = bait.resize(merged.size, resample=Image.LANCZOS)
-        bait = set_opacity(bait, 128)
-        merged = Image.alpha_composite(bait, merged)
-
-    output = io.BytesIO()
-    merged.save(output, format="PNG")
-    output.seek(0)
-    return output
-
-
-def process_image(image_bytes, bait_bytes=None, method=1):
-    if method == 2:
-        return process_image_method2(image_bytes, bait_bytes=bait_bytes)
-    return process_image_method1(image_bytes, bait_bytes=bait_bytes)
 
 def create_bait_image(image_bytes):
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
@@ -292,16 +180,10 @@ def create_bait_image(image_bytes):
     return output
 
 @tree.command(name="decalbypass")
-@app_commands.describe(method="Choose the decal bypass style")
-@app_commands.choices(method=[
-    app_commands.Choice(name="Method 1", value=1),
-    app_commands.Choice(name="Method 2", value=2)
-])
 async def decalbypass(
     interaction: discord.Interaction,
     image: discord.Attachment,
     bait: discord.Attachment,
-    method: int = 1,
 ):
     await interaction.response.defer(ephemeral=True)
 
@@ -315,7 +197,7 @@ async def decalbypass(
 
     image_bytes = await image.read()
     bait_bytes = await bait.read()
-    result = process_image(image_bytes, bait_bytes=bait_bytes, method=method)
+    result = process_image(image_bytes, bait_bytes=bait_bytes)
 
     file = discord.File(fp=result, filename="decalbypass.png")
     try:
