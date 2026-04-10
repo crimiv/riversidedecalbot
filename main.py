@@ -185,14 +185,14 @@ async def decalbypass(
     image: discord.Attachment,
     bait: discord.Attachment,
 ):
-    await interaction.response.defer()
+    await interaction.response.defer(ephemeral=True)
 
     if not (image.content_type and image.content_type.startswith("image")):
-        await interaction.followup.send("Please upload a valid image file for the decal.")
+        await interaction.followup.send("Please upload a valid image file for the decal.", ephemeral=True)
         return
 
     if not (bait.content_type and bait.content_type.startswith("image")):
-        await interaction.followup.send("Please upload a valid image file for the bait.")
+        await interaction.followup.send("Please upload a valid image file for the bait.", ephemeral=True)
         return
 
     image_bytes = await image.read()
@@ -202,18 +202,20 @@ async def decalbypass(
     file = discord.File(fp=result, filename="decalbypass.png")
     try:
         await interaction.user.send(file=file)
+        message = await interaction.followup.send("Sent to your DMs.", ephemeral=True)
+        await message.delete()
     except discord.Forbidden:
-        await interaction.followup.send("I couldn't send the image to your DMs. Please make sure your DMs are open for this server.")
+        await interaction.followup.send("I couldn't send the image to your DMs. Please make sure your DMs are open for this server.", ephemeral=True)
 
 @tree.command(name="createbait")
 async def createbait(
     interaction: discord.Interaction,
     image: discord.Attachment,
 ):
-    await interaction.response.defer()
+    await interaction.response.defer(ephemeral=True)
 
     if not (image.content_type and image.content_type.startswith("image")):
-        await interaction.followup.send("Please upload a valid image file.")
+        await interaction.followup.send("Please upload a valid image file.", ephemeral=True)
         return
 
     image_bytes = await image.read()
@@ -222,8 +224,10 @@ async def createbait(
     file = discord.File(fp=result, filename="bait.png")
     try:
         await interaction.user.send(file=file)
+        message = await interaction.followup.send("Sent to your DMs.", ephemeral=True)
+        await message.delete()
     except discord.Forbidden:
-        await interaction.followup.send("I couldn't send the image to your DMs. Please make sure your DMs are open for this server.")
+        await interaction.followup.send("I couldn't send the image to your DMs. Please make sure your DMs are open for this server.", ephemeral=True)
 
 @client.event
 async def on_ready():
